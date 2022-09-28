@@ -1,69 +1,53 @@
-const client = require("./client");
-
 const path = require("path");
 const express = require("express");
 const bodyParser = require("body-parser");
 
 const app = express();
 
-app.set("views",path.join(__dirname,"views"));
-app.set("view engine","hbs");
+app.set("views", path.join(__dirname, "views"));
+app.set("view engine", "hbs");
 
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended:false}));
+app.use(bodyParser.urlencoded({ extended: false }));
 
-app.get("/",(req,res)=>{
-    client.getAllMenu(null,(err,data)=>{
-        if(!err){
-            res.render("menu",{
-                results: data.menu
-            });
-        }
+var amqp = require("amqplib/callback_api");
+
+app.post("/placeorder", (req, res) => {
+  const orderItem = {
+    name: req.body.name,
+    price: req.body.price,
+    type: req.body.type,
+  };
+
+  amqp.connect("amqp://localhost", function (error0, connection) {
+    if (error0) {
+      throw error0;
+    }
+    connection.createChannel(function (error1, channel) {
+      if (error1) {
+        throw error1;
+      }
+      var exchange = "direct_logs";
+    //   var args = process.argv.slice(2);
+    //   var msg = args.slice(1).join(" ") || "Hello World!";
+    //   var severity = args.length > 0 ? args[0] : "info";
+
+      channel.assertExchange(exchange, "direct", {
+        durable: false,
+      });
+      channel.publish(exchange, orderItem['type'], Buffer.from(JSON.stringify(orderItem)));
+      console.log(" [x] Sent %s: '%s'", orderItem['type'], JSON.stringify(orderItem));
     });
-});
 
-app.post("/save",(req,res)=>{
-    let newMenuItem={
-        name:req.body.name,
-        price: req.body.price
-    };
-
-    client.insert(newMenuItem,(err,data)=>{
-        if(err) throw err;
-
-        console.log("New Menu created successfully", data);
-        res.redirect("/");
-    });
-});
-
-
-app.post("/update", (req, res) => {
-	const updateMenuItem = {
-		id: req.body.id,
-		name: req.body.name,
-		price: req.body.price,
-	};
-    console.log("update Item %s %s %d",updateMenuItem.id, req.body.name, req.body.price);
-
-	client.update(updateMenuItem, (err, data) => {
-		if (err) throw err;
-
-		console.log("Menu Item updated successfully", data);
-		res.redirect("/");
-	});
-});
-
-
-
-app.post("/remove",(req,res)=>{
-    client.remove({id: req.body.menuItem_id},(err,_)=>{
-        if(err) throw err;
-        console.log("Menu Item removed successfully");
-        res.redirect("/");
-    });
+    // setTimeout(function () {
+    //   connection.close();
+    //   process.exit(0);
+    // }, 500);
+    return res.status(200).json(orderItem);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT,()=>{
-    console.log("Server running at port %d",PORT);
+app.listen(PORT, () => {
+  console.log("Server running at port %d", PORT);
 });
